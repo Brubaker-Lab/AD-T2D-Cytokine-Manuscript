@@ -26,12 +26,15 @@ if(!require(effects)) install.packages("effects", repos = "http://cran.us.r-proj
 suppressWarnings(library (effects, verbose = FALSE))
 if(!require(pheatmap)) install.packages("pheatmap", repos = "http://cran.us.r-project.org")
 suppressWarnings(library (pheatmap, verbose = FALSE))
-if(!require(mixOmics)) install.packages("mixOmics", repos = "http://cran.us.r-project.org")
-suppressWarnings(library (mixOmics, verbose = FALSE))
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 suppressWarnings(library (tidyverse, verbose = FALSE))
 if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
 suppressWarnings(library (purrr, verbose = FALSE))
+
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("mixOmics")
 ```
 
 ## 1. Data Preparation for Analysis
@@ -39,7 +42,7 @@ The Observed Concentration (OC) of the cytokines measured from the Luminex assay
 
 ```{r Import of Observed Concentration (OC) Results and Prepare Data, warning=FALSE}
 # Download the OC cytokine data front the 384-well plate, T2D-AD research work over the summer
-OC_cytokine <- read.csv("~/Desktop/20221025_ObservedConc.csv")
+OC_cytokine <- read.csv("20221025_ObservedConc.csv")
 # Remove the selected rows
 OC_cytokine <- OC_cytokine[-c(1:6,9,72:76),]
 # Remove the first two columns
