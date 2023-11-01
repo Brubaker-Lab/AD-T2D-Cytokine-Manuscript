@@ -1,0 +1,1529 @@
+---
+title: "Profiling Neuron Inflammation Driven by Alzheimer’s Disease and Type 2 Diabetes Associated Metabolites"
+author: "Brendan K. Ball"
+date: "21AUG23"
+output: html_document
+---
+
+## 0. Download the Required Packages
+The following packages were used for the RStudio software version 1.4.1717 "Juliet Rose" for macOS.
+
+```{r Library Packages Installation, warning=FALSE}
+# Downloads and calls from the library the necessary packages needed to run the code
+if(!require(stringr)) install.packages("stringr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (stringr, verbose = FALSE))
+if(!require(gtools)) install.packages("gtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (gtools, verbose = FALSE))
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (dplyr, verbose = FALSE))
+if(!require(factoextra)) install.packages("factoextra", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (factoextra, verbose = FALSE))
+if(!require(devtools)) install.packages("devtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (devtools, verbose = FALSE))
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (data.table, verbose = FALSE))
+if(!require(effects)) install.packages("effects", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (effects, verbose = FALSE))
+if(!require(pheatmap)) install.packages("pheatmap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (pheatmap, verbose = FALSE))
+if(!require(mixOmics)) install.packages("mixOmics", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (mixOmics, verbose = FALSE))
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tidyverse, verbose = FALSE))
+if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (purrr, verbose = FALSE))
+```
+
+## 1. Data Preparation for Analysis
+The Observed Concentration (OC) of the cytokines measured from the Luminex assay is used for the data analysis. The imported CSV file is first simplified for easier interpretation of the data and use of code.
+
+```{r Import of Observed Concentration (OC) Results and Prepare Data, warning=FALSE}
+# Download the OC cytokine data front the 384-well plate, T2D-AD research work over the summer
+OC_cytokine <- read.csv("~/Desktop/20221025_ObservedConc.csv")
+# Remove the selected rows
+OC_cytokine <- OC_cytokine[-c(1:6,9,72:76),]
+# Remove the first two columns
+OC_cytokine <- OC_cytokine[-c(1:2)]
+# Rename the first row, first column cell as "Description"
+OC_cytokine[1,1] <- "Description"
+# Pull the column information to use for the column name
+OC_colname <- OC_cytokine[1,]
+# Rename the columns 
+colnames(OC_cytokine) <- OC_colname
+# Remove the two rows at the top
+OC_cytokine <- OC_cytokine[-c(1:2),]
+# Remove the columns that have significant number of missing information
+OC_cytokine <- OC_cytokine[-c(3, 4, 6, 13:16, 24)]
+# Reset the row number names
+rownames(OC_cytokine) <- NULL
+# Remove character strings to simplify the data/metabolite name
+OC_cytokine$Description <- gsub("Reagent Name: ", "", as.character(OC_cytokine$Description))
+OC_cytokine$Description <- gsub("Sample ID: ", "", as.character(OC_cytokine$Description))
+
+# Remove the numbers after the metabolites to cluster easier by name
+OC_cytokine[9:62,1] <- gsub("1|2|3", "", as.character(OC_cytokine[9:62,1]))
+
+# Removes all special characters, in this case, the * sign that indicates value extrapolated from standard range
+for (i in 2:ncol(OC_cytokine)) {
+  OC_cytokine[,i] <- gsub("^\\*", "", as.character(OC_cytokine[,i]))
+}
+
+# For loop to make all columns within the OC_cytokine data frame numeric, except for the first column
+for (i in 2:ncol(OC_cytokine)) {
+  OC_cytokine[,i] <- as.numeric(OC_cytokine[,i])
+}
+```
+
+### 1.1. Data Processing with Standard Values
+The OC cytokine data is processed by replacing any <OOR, or below the lowest level of quantification with the lowest recorded standard value. This is done for any m
+
+```{r Substitute Missing Values with Lowest Standard Measurements}
+## Eotaxin
+# Replace OOR< value for niacinamide vehicle with the standard 7 value
+OC_cytokine[38,2] <- OC_cytokine[7,2]
+# Replace OOR< values for D-sorbitol vehicle with the standard 7 value
+OC_cytokine[60,2] <- OC_cytokine[7,2]
+
+## IL-1alpha
+# Replace OOR< values for arachidonic acid with the standard 8 value 
+OC_cytokine[15,5] <- OC_cytokine[8,5]
+OC_cytokine[16,5] <- OC_cytokine[8,5]
+# Replace OOR< values for retinol vehicle with the standard 8 value
+OC_cytokine[31,5] <- OC_cytokine[8,5]
+# Replace OOR< values for niacinamide vehicle with the standard 8 value
+OC_cytokine[38,5] <- OC_cytokine[8,5]
+# Replace OOR< values for L-tryptophan with the standard 8 value
+OC_cytokine[39,5] <- OC_cytokine[8,5]
+# Replace OOR< values for aminoadipic acid vehicle with the standard 8 value
+OC_cytokine[55,5] <- OC_cytokine[8,5]
+# Replace OOR< values for D-sorbitol vehicle with the standard 8 value
+OC_cytokine[62,5] <- OC_cytokine[8,5]
+
+## IL6
+# Replace OOR< values for retinol vehicle with the standard 8 value
+OC_cytokine[31,10] <- OC_cytokine[8,10]
+# Replace OOR< values for niacinamide vehicle with the standard 8 value
+OC_cytokine[36,10] <- OC_cytokine[8,10]
+# Replace OOR< values for L-tryptophan with the standard 8 value
+OC_cytokine[39,10] <- OC_cytokine[8,10]
+# Replace OOR< values for aminoadipic acid vehicle with the standard 8 value
+OC_cytokine[54,10] <- OC_cytokine[8,10]
+OC_cytokine[56,10] <- OC_cytokine[8,10]
+# Replace OOR< values for D-sorbitol with the standard 8 value
+OC_cytokine[59,10] <- OC_cytokine[8,10]
+# Replace OOR< values for D-sorbitol vehicle with the standard 8 value
+OC_cytokine[62,10] <- OC_cytokine[8,10]
+
+## RANTES
+# Replace OOR< values for retinol vehicle with the standard 8 value
+OC_cytokine[31,16] <- OC_cytokine[8, 16]
+```
+
+### 1.2. Log2 Data Normalization Respect to Metabolite Vehicles
+A new data frame without the standards is created, and the metabolite names are renamed from the abbreviation to the full name. The processed data is then normalized respect to the reported cytokine concentrations from the vehicle groups. 
+
+```{r Log2 Normalization with the Mean Values}
+# Create a new data frame without the standards
+OC_dat <- OC_cytokine[c(9:62),]
+# Reset the row numbers name
+rownames(OC_dat) <- NULL
+
+# Renaming the metabolites to the full name
+OC_dat[c(1:3),1] <- "Lauric Acid"
+OC_dat[c(4:6),1] <- "Lauric Acid (V)"
+OC_dat[c(7:9),1] <- "Arachidonic Acid"
+OC_dat[c(10:12),1] <- "Arachidonic Acid (V)"
+OC_dat[c(13:15),1] <- "Fructose"
+OC_dat[c(16:18),1] <- "Fructose (V)"
+OC_dat[c(19:21),1] <- "Retinol"
+OC_dat[c(22:24),1] <- "Retinol (V)"
+OC_dat[c(25:27),1] <- "Niacinamide"
+OC_dat[c(28:30),1] <- "Niacinamide (V)"
+OC_dat[c(31:33),1] <- "L-Tryptophan"
+OC_dat[c(34:36),1] <- "L-Tryptophan (V)"
+OC_dat[c(37:39),1] <- "Asparagine"
+OC_dat[c(40:42),1] <- "Asparagine (V)"
+OC_dat[c(43:45),1] <- "Aminoadipic Acid"
+OC_dat[c(46:48),1] <- "Aminoadipic Acid (V)"
+OC_dat[c(49:51),1] <- "D-Sorbitol"
+OC_dat[c(52:54),1] <- "D-Sorbitol (V)"
+
+### Taking the mean for each separate cytokines
+# Take the vehicles separately in a new data frame for data analysis
+OC_dat_veh <- OC_dat[grepl("(V)", OC_dat$Description),] #Vehicles only
+# Combine the similar description names (group_by) then take the average for each metabolite OC vehicle group
+## Eotaxin
+OC_veh_avg_eotaxin <- OC_dat_veh  %>% group_by(Description) %>% summarize(Eotaxin = mean(`Eotaxin (74)`))
+OC_veh_avg_eotaxin <- as.data.frame(OC_veh_avg_eotaxin)
+## IFN-gamma
+OC_veh_avg_IFNgamma <- OC_dat_veh  %>% group_by(Description) %>% summarize(`IFN-gamma` = mean(`IFN-gamma (34)`))
+OC_veh_avg_IFNgamma <- as.data.frame(OC_veh_avg_IFNgamma)
+## IL-1beta
+OC_veh_avg_IL1b <- OC_dat_veh  %>% group_by(Description) %>% summarize(`IL-1beta` = mean(`IL-1Beta (19)`))
+OC_veh_avg_IL1b <- as.data.frame(OC_veh_avg_IL1b)
+## IL-1alpha
+OC_veh_avg_IL1a <- OC_dat_veh  %>% group_by(Description) %>% summarize(`IL-1alpha` = mean(`IL-1alpha (53)`))
+OC_veh_avg_IL1a <- as.data.frame(OC_veh_avg_IL1a)
+## IL10
+OC_veh_avg_IL10 <- OC_dat_veh  %>% group_by(Description) %>% summarize(IL10 = mean(`IL10 (56)`))
+OC_veh_avg_IL10 <- as.data.frame(OC_veh_avg_IL10)
+## IL12p40
+OC_veh_avg_IL12p40 <- OC_dat_veh  %>% group_by(Description) %>% summarize(IL12p40 = mean(`IL12p40 (76)`))
+OC_veh_avg_IL12p40 <- as.data.frame(OC_veh_avg_IL12p40)
+## IL12p70
+OC_veh_avg_IL12p70 <- OC_dat_veh  %>% group_by(Description) %>% summarize(IL12p70 = mean(`IL12p70 (78)`))
+OC_veh_avg_IL12p70 <- as.data.frame(OC_veh_avg_IL12p70)
+## IL13
+OC_veh_avg_IL13 <- OC_dat_veh  %>% group_by(Description) %>% summarize(IL13 = mean(`IL13 (37)`))
+OC_veh_avg_IL13 <- as.data.frame(OC_veh_avg_IL13)
+## IL6
+OC_veh_avg_IL6 <- OC_dat_veh  %>% group_by(Description) %>% summarize(IL6 = mean(`IL6 (38)`))
+OC_veh_avg_IL6 <- as.data.frame(OC_veh_avg_IL6)
+## IL9
+OC_veh_avg_IL9 <- OC_dat_veh  %>% group_by(Description) %>% summarize(IL9 = mean(`IL9 (33)`))
+OC_veh_avg_IL9 <- as.data.frame(OC_veh_avg_IL9)
+## KC
+OC_veh_avg_KC <- OC_dat_veh  %>% group_by(Description) %>% summarize(KC = mean(`KC (57)`))
+OC_veh_avg_KC <- as.data.frame(OC_veh_avg_KC)
+## MCP-1
+OC_veh_avg_MCP1 <- OC_dat_veh  %>% group_by(Description) %>% summarize(`MCP-1` = mean(`MCP-1 (51)`))
+OC_veh_avg_MCP1 <- as.data.frame(OC_veh_avg_MCP1)
+## MIP-1beta
+OC_veh_avg_MIP1b <- OC_dat_veh  %>% group_by(Description) %>% summarize(`MIP-1beta` = mean(`MIP-1Beta (75)`))
+OC_veh_avg_MIP1b <- as.data.frame(OC_veh_avg_MIP1b)
+## MIP-1alpha
+OC_veh_avg_MIP1a <- OC_dat_veh  %>% group_by(Description) %>% summarize(`MIP-1alpha` = mean(`MIP-1alpha (77)`))
+OC_veh_avg_MIP1a <- as.data.frame(OC_veh_avg_MIP1a)
+## RANTES
+OC_veh_avg_RANTES <- OC_dat_veh  %>% group_by(Description) %>% summarize(`RANTES` = mean(`RANTES (55)`))
+OC_veh_avg_RANTES <- as.data.frame(OC_veh_avg_RANTES)
+
+# Merge the data sets into a list
+OC_avg_list <- list(OC_veh_avg_eotaxin, OC_veh_avg_IFNgamma, OC_veh_avg_IL1b, OC_veh_avg_IL1a, OC_veh_avg_IL10, OC_veh_avg_IL12p40, 
+                    OC_veh_avg_IL12p70, OC_veh_avg_IL13, OC_veh_avg_IL6, OC_veh_avg_IL9, OC_veh_avg_KC, OC_veh_avg_MCP1,
+                    OC_veh_avg_MIP1b, OC_veh_avg_MIP1a, OC_veh_avg_RANTES)
+# Combine the data frames together using the list
+OC_avg_all <- Reduce(function(x, y) merge(x, y, all=TRUE), OC_avg_list)
+
+OC_dat_met <- OC_dat[!grepl("(V)", OC_dat$Description),] #Metabolites only
+# Reset the row numbers name
+rownames(OC_dat_met) <- NULL
+# Rename each description to have the replicate number included
+OC_dat_met[1,1] <- "Lauric Acid (1)"
+OC_dat_met[2,1] <- "Lauric Acid (2)"
+OC_dat_met[3,1] <- "Lauric Acid (3)"
+OC_dat_met[4,1] <- "Arachidonic Acid (1)"
+OC_dat_met[5,1] <- "Arachidonic Acid (2)"
+OC_dat_met[6,1] <- "Arachidonic Acid (3)"
+OC_dat_met[7,1] <- "Fructose (1)"
+OC_dat_met[8,1] <- "Fructose (2)"
+OC_dat_met[9,1] <- "Fructose (3)"
+OC_dat_met[10,1] <- "Retinol (1)"
+OC_dat_met[11,1] <- "Retinol (2)"
+OC_dat_met[12,1] <- "Retinol (3)"
+OC_dat_met[13,1] <- "Niacinamide (1)"
+OC_dat_met[14,1] <- "Niacinamide (2)"
+OC_dat_met[15,1] <- "Niacinamide (3)"
+OC_dat_met[16,1] <- "L-Tryptophan (1)"
+OC_dat_met[17,1] <- "L-Tryptophan (2)"
+OC_dat_met[18,1] <- "L-Tryptophan (3)"
+OC_dat_met[19,1] <- "Asparagine (1)"
+OC_dat_met[20,1] <- "Asparagine (2)"
+OC_dat_met[21,1] <- "Asparagine (3)"
+OC_dat_met[22,1] <- "Aminoadipic Acid (1)"
+OC_dat_met[23,1] <- "Aminoadipic Acid (2)"
+OC_dat_met[24,1] <- "Aminoadipic Acid (3)"
+OC_dat_met[25,1] <- "D-Sorbitol (1)"
+OC_dat_met[26,1] <- "D-Sorbitol (2)"
+OC_dat_met[27,1] <- "D-Sorbitol (3)"
+
+# Create a data frame with the computations for averaged vehicles
+OC_dat_avg <- OC_dat_met
+# Match alphabetical order similar to the structure of the vehicles data 
+OC_dat_avg <- OC_dat_avg %>% arrange(Description)
+## Take the log2(Metabolite/Vehicle) Calculation for each replicate
+# For Aminoadipic Acid replicates 1-3
+OC_dat_avg[1,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[1,2:ncol(OC_dat_avg)]/OC_avg_all[1,2:ncol(OC_dat_avg)])
+OC_dat_avg[2,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[2,2:ncol(OC_dat_avg)]/OC_avg_all[1,2:ncol(OC_dat_avg)])
+OC_dat_avg[3,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[3,2:ncol(OC_dat_avg)]/OC_avg_all[1,2:ncol(OC_dat_avg)])
+# For Arachidonic Acid replicates 1-3
+OC_dat_avg[4,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[4,2:ncol(OC_dat_avg)]/OC_avg_all[2,2:ncol(OC_dat_avg)])
+OC_dat_avg[5,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[5,2:ncol(OC_dat_avg)]/OC_avg_all[2,2:ncol(OC_dat_avg)])
+OC_dat_avg[6,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[6,2:ncol(OC_dat_avg)]/OC_avg_all[2,2:ncol(OC_dat_avg)])
+# For Asparagine replicates 1-3
+OC_dat_avg[7,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[7,2:ncol(OC_dat_avg)]/OC_avg_all[3,2:ncol(OC_dat_avg)])
+OC_dat_avg[8,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[8,2:ncol(OC_dat_avg)]/OC_avg_all[3,2:ncol(OC_dat_avg)])
+OC_dat_avg[9,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[9,2:ncol(OC_dat_avg)]/OC_avg_all[3,2:ncol(OC_dat_avg)])
+# For D-Sorbitol replicates 1-3
+OC_dat_avg[10,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[10,2:ncol(OC_dat_avg)]/OC_avg_all[4,2:ncol(OC_dat_avg)])
+OC_dat_avg[11,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[11,2:ncol(OC_dat_avg)]/OC_avg_all[4,2:ncol(OC_dat_avg)])
+OC_dat_avg[12,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[12,2:ncol(OC_dat_avg)]/OC_avg_all[4,2:ncol(OC_dat_avg)])
+# For Fructose replicates 1-3
+OC_dat_avg[13,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[13,2:ncol(OC_dat_avg)]/OC_avg_all[5,2:ncol(OC_dat_avg)])
+OC_dat_avg[14,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[14,2:ncol(OC_dat_avg)]/OC_avg_all[5,2:ncol(OC_dat_avg)])
+OC_dat_avg[15,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[15,2:ncol(OC_dat_avg)]/OC_avg_all[5,2:ncol(OC_dat_avg)])
+# For L-Tryptophan replicates 1-3
+OC_dat_avg[16,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[16,2:ncol(OC_dat_avg)]/OC_avg_all[6,2:ncol(OC_dat_avg)])
+OC_dat_avg[17,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[17,2:ncol(OC_dat_avg)]/OC_avg_all[6,2:ncol(OC_dat_avg)])
+OC_dat_avg[18,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[18,2:ncol(OC_dat_avg)]/OC_avg_all[6,2:ncol(OC_dat_avg)])
+# For Lauric Acid replicates 1-3
+OC_dat_avg[19,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[19,2:ncol(OC_dat_avg)]/OC_avg_all[7,2:ncol(OC_dat_avg)])
+OC_dat_avg[20,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[20,2:ncol(OC_dat_avg)]/OC_avg_all[7,2:ncol(OC_dat_avg)])
+OC_dat_avg[21,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[21,2:ncol(OC_dat_avg)]/OC_avg_all[7,2:ncol(OC_dat_avg)])
+# For Niacinamide replicates 1-3
+OC_dat_avg[22,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[22,2:ncol(OC_dat_avg)]/OC_avg_all[8,2:ncol(OC_dat_avg)])
+OC_dat_avg[23,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[23,2:ncol(OC_dat_avg)]/OC_avg_all[8,2:ncol(OC_dat_avg)])
+OC_dat_avg[24,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[24,2:ncol(OC_dat_avg)]/OC_avg_all[8,2:ncol(OC_dat_avg)])
+# For Retinol replicates 1-3
+OC_dat_avg[25,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[25,2:ncol(OC_dat_avg)]/OC_avg_all[9,2:ncol(OC_dat_avg)])
+OC_dat_avg[26,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[26,2:ncol(OC_dat_avg)]/OC_avg_all[9,2:ncol(OC_dat_avg)])
+OC_dat_avg[27,2:ncol(OC_dat_avg)] <- log2(OC_dat_avg[27,2:ncol(OC_dat_avg)]/OC_avg_all[9,2:ncol(OC_dat_avg)])
+```
+
+## 2. Interpretation of the Data
+The interpretation of the data includes hierarchical clustering with heat maps, principcal component analysis, partial least squared discriminant analysis, and box-and-whisker plots. Statistical analysis includes Kruskal Wallis and Mann Whitney for significance. 
+
+### 2.1. Heat Map for Mean metabolite Values with q-values from Kruskal-Wallis Test
+A heat map is generated with the log2 fold change for each cytokine concentration across different metabolite stimulation. The cytokines are hierarchically clustered.
+
+```{r Generating the Heat Map for Mean Metabolite Values, fig.height=4.5, fig.width=5}
+# Create a placement variable for the matrix
+OC_avg_m <- OC_dat_avg
+# Create a variable to hold the row names
+OC_avg_rowname <- OC_avg_m$Description
+# Remove the "Description" column to move as a row name
+OC_avg_matrix <- OC_avg_m[c(2:16)]
+# Replace the current row name with the "Description" of the metabolites
+rownames(OC_avg_matrix) <- OC_avg_rowname 
+# Rename the columns to the cytokines
+colnames(OC_avg_matrix)[1] <- "Eotaxin"
+colnames(OC_avg_matrix)[2] <- "IFN-gamma"
+colnames(OC_avg_matrix)[3] <- "IL-1beta"
+colnames(OC_avg_matrix)[4] <- "IL-1alpha"
+colnames(OC_avg_matrix)[5] <- "IL10"
+colnames(OC_avg_matrix)[6] <- "IL12p40"
+colnames(OC_avg_matrix)[7] <- "IL12p70"
+colnames(OC_avg_matrix)[8] <- "IL13"
+colnames(OC_avg_matrix)[9] <- "IL6"
+colnames(OC_avg_matrix)[10] <- "IL9"
+colnames(OC_avg_matrix)[11] <- "KC"
+colnames(OC_avg_matrix)[12] <- "MCP-1"
+colnames(OC_avg_matrix)[13] <- "MIP-1beta"
+colnames(OC_avg_matrix)[14] <- "MIP-1alpha"
+colnames(OC_avg_matrix)[15] <- "RANTES"
+
+# Creating different groups for the metabolites to reorganize order based on the associations with T2D and AD
+OC_matrix_AAA <- OC_avg_matrix[1:3,]
+OC_matrix_AA <- OC_avg_matrix[4:6,]
+OC_matrix_Asp <- OC_avg_matrix[7:9,]
+OC_matrix_DS <- OC_avg_matrix[10:12,]
+OC_matrix_F <- OC_avg_matrix[13:15,]
+OC_matrix_LT <- OC_avg_matrix[16:18,]
+OC_matrix_LA <- OC_avg_matrix[19:21,]
+OC_matrix_N <- OC_avg_matrix[22:24,]
+OC_matrix_R <- OC_avg_matrix[25:27,]
+
+# Bind the groups of metabolites by respective associations with T2D and AD
+# AD protective: LT, N;    T2D: LA, Asp;    AD/T2D protective: R;     AD/T2D: AAA, AA, DS, F
+OC_avg_matrix <- rbind(OC_matrix_LT, OC_matrix_N, OC_matrix_LA, OC_matrix_Asp, OC_matrix_R, OC_matrix_AAA, OC_matrix_AA, OC_matrix_DS, OC_matrix_F)
+
+# Make the data frame a matrix
+OC_avg_matrix <- as.matrix(OC_avg_matrix)
+
+# Generate the heat map
+heatmapfig <- pheatmap(OC_avg_matrix,
+  cluster_rows = F,
+  cluster_cols = T,
+  color = colorRampPalette(c("blue", "white", "red"))(10000),
+  border_color = "black",
+  breaks = seq(-5, 5, length.out = 10000),
+  angle_col = 45,
+  fontsize_col = 9,
+  fontsize_row = 9,
+  cellwidth=20)
+```
+
+A Kruskal-Wallis (KW) test is performed across different disease-associations for each metabolite. The p-values for each cytokine across the different disease-association is recorded and used for the heatmap. 
+
+```{r Kruskal-Wallis Test}
+# Perform Kruskal-Wallis tests and store p-values in a vector
+
+# Create a KW-defined data frame
+OC_condition_KW <- OC_dat_avg
+
+# Replace the description with the condition label
+colnames(OC_condition_KW)[1] <- "Condition"
+
+# Renaming the metabolite names to respective condition group
+# AD protective: LT, N;    T2D: LA, Asp;    AD/T2D protective: R;     AD/T2D: AAA, AA, DS, F
+OC_condition_KW[c(1:3),1] <- "AD & T2D"
+OC_condition_KW[c(4:6),1] <- "AD & T2D"
+OC_condition_KW[c(7:9),1] <- "T2D"
+OC_condition_KW[c(10:12),1] <- "AD & T2D"
+OC_condition_KW[c(13:15),1] <- "AD & T2D"
+OC_condition_KW[c(16:18),1] <- "AD Protective"
+OC_condition_KW[c(19:21),1] <- "T2D"
+OC_condition_KW[c(22:24),1] <- "AD Protective"
+OC_condition_KW[c(25:27),1] <- "AD & T2D Protective"
+
+
+p_values <- c()
+for (i in 2:ncol(OC_condition_KW)) {
+  kwTest2 <- kruskal.test(OC_condition_KW[,i], OC_condition_KW$Condition)
+  p_values <- c(p_values, kwTest2$p.value)
+}
+
+# Perform Benjamini-Hochberg correction
+adjusted_p_values <- p.adjust(p_values, method = "BH")
+
+# Combine the original p-values and adjusted p-values into a data frame
+p_value_df <- data.frame(OriginalPValue = p_values, AdjustedPValue = adjusted_p_values)
+
+# Renaming the cytokine column
+p_value_df[1,3] <- "Eotaxin"
+p_value_df[2,3] <- "IFN-gamma"
+p_value_df[3,3] <- "IL-1beta"
+p_value_df[4,3] <- "IL-1alpha"
+p_value_df[5,3] <- "IL10"
+p_value_df[6,3] <- "IL12p40"
+p_value_df[7,3] <- "IL12p70"
+p_value_df[8,3] <- "IL13"
+p_value_df[9,3] <- "IL6"
+p_value_df[10,3] <- "IL9"
+p_value_df[11,3] <- "KC"
+p_value_df[12,3] <- "MCP-1"
+p_value_df[13,3] <- "MIP-1beta"
+p_value_df[14,3] <- "MIP-1alpha"
+p_value_df[15,3] <- "RANTES"
+
+# Rename the columns
+colnames(p_value_df)[1] <- "p-value"
+colnames(p_value_df)[2] <- "BH p-value"
+colnames(p_value_df)[3] <- "Cytokine"
+
+# Reset the row count number
+rownames(p_value_df) <- NULL
+# Make the p-value column numeric
+p_value_df$`p-value` <- as.numeric(p_value_df$`p-value`)
+p_value_df$`BH p-value` <- as.numeric(p_value_df$`BH p-value`)
+# Prepare a method to color code the graph based on p-value greater or less than 0.05
+p_value_df <- p_value_df %>%
+  mutate(sign = `BH p-value` <= 0.05)
+
+# Adjust the positions on the bar chart to display bars from lowest p-value to largest value
+positions <- c("MIP-1alpha", "IL13", "IFN-gamma", "IL-1alpha", "Eotaxin", "KC", "IL12p70", "RANTES", "MIP-1beta", "IL9", "IL6", "IL10", "IL-1beta", "IL12p40", "MCP-1")
+
+# Plot the KW BH corrected p-value results
+ggplot(p_value_df) +
+  geom_col(aes(x = `BH p-value`, y = Cytokine, fill=sign), colour = "black", width = 1) +
+  ylab(NULL) + xlab("p-value (color cuttoff at p-value > 0.05)") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 10), 
+        axis.text = element_text(color = "black", size=10)) + 
+  xlim(c(-0,0.65)) + scale_y_discrete(limits = positions)
+```
+
+### 2.2. Principal Component Analysis
+A principal component analysis (PCA) is done for the observed concentration groups. Groupings and coloring is based on A) indivudual metabolites and B) disease-associations.
+
+```{r Principal Component Analysis of the Metabolites and Disease-Associated Groups, fig.height=5.2, fig.width=2.8}
+# Begin by creating a renamed copy of the data for editing
+OC_dat_group <- OC_dat_avg
+
+# Renaming the metabolites to the full name (originally as abbreviated letters)
+OC_dat_group[c(1:3),1] <- "Aminoadipic Acid"
+OC_dat_group[c(4:6),1] <- "Arachidonic Acid"
+OC_dat_group[c(7:9),1] <- "Asparagine"
+OC_dat_group[c(10:12),1] <- "D-Sorbitol"
+OC_dat_group[c(13:15),1] <- "Fructose"
+OC_dat_group[c(16:18),1] <- "L-Tryptophan"
+OC_dat_group[c(19:21),1] <- "Lauric Acid"
+OC_dat_group[c(22:24),1] <- "Niacinamide"
+OC_dat_group[c(25:27),1] <- "Retinol"
+
+# Prepare the principal components
+OC_dat_group_pr <- prcomp(OC_dat_group[c(2:ncol(OC_dat_group))], center = FALSE, scale = FALSE) #Metabolites
+
+# Form a PCA by categorizing based on T2D/AD affiliations
+PCA_groupings <- as.data.frame(c("AD+T2D", "AD+T2D", "AD+T2D", "AD+T2D", "AD+T2D", "AD+T2D", "T2D", "T2D", "T2D", "AD+T2D", "AD+T2D", "AD+T2D", "AD+T2D", "AD+T2D", "AD+T2D", "AD*", "AD*", "AD*", "T2D", "T2D", "T2D", "AD*", "AD*", "AD*", "AD*+T2D*", "AD*+T2D*", "AD*+T2D*"))
+# Rename the column as a conditional group
+colnames(PCA_groupings)[1] <- "Condition"
+
+# Combine the groupings column with the original data set
+OC_dat_group_cond <- cbind(OC_dat_group, PCA_groupings)
+
+# Prepare the principal components
+OC_dat_group_cond_pr <- prcomp(OC_dat_group_cond[c(2:ncol(OC_dat_group))], center = FALSE, scale = FALSE) #Metabolites
+
+# Create PCA chart with coloring/grouping based on different metabolite groups
+g1 <- fviz_pca_ind(OC_dat_group_pr, label="none", alpha.ind=1, pointshape=19, habillage=OC_dat_group_cond$Description, pointsize = 3.5, repel = TRUE, col.ind = "black", invisible="quali",legend.title = "Metabolites",
+             palette = c("#8b0000", "#d73027", "#f46d43", "#fdae61", "#F0E68C", "#abd9e9", "#74add1", "#4575b4", "#00008b"))
+
+df_edges <- 
+  pluck(g1, "data") %>% as_tibble() %>%
+  group_by(Groups) %>% 
+  summarise(xend = mean(x), yend = mean(y)) %>%
+  left_join(y =  pluck(g1, "data"), 
+            by = "Groups", 
+            multiple = "all")
+
+g1 +
+  geom_segment(data = df_edges, aes(xend = xend, yend = yend, x = x, y = y, colour = Groups), alpha = .8, size=1) + 
+
+theme(legend.position = 'right') + coord_equal() + theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()  # Remove minor gridlines
+  ) + xlim(-7.5, 7.5) + ylim(-5,5)
+
+# Create PCA chart coloring based on disease association
+g2 <- fviz_pca_ind(OC_dat_group_cond_pr, label="none", alpha.ind=1, pointshape=19, habillage=OC_dat_group_cond$Condition, pointsize = 3.5, repel = TRUE, col.ind = "black", invisible="quali",legend.title = "Metabolites",
+             palette = c("dodgerblue3", "darkslategray3", "hot pink", "orange"))
+
+df_edges2 <- 
+  pluck(g2, "data") %>% as_tibble() %>%
+  group_by(Groups) %>% 
+  summarise(xend = mean(x), yend = mean(y)) %>%
+  left_join(y =  pluck(g2, "data"), 
+            by = "Groups", 
+            multiple = "all")
+
+g2 +
+  geom_segment(data = df_edges2, aes(xend = xend, yend = yend, x = x, y = y, colour = Groups), alpha = .8, size=1) + 
+
+theme(legend.position = 'right') + coord_equal() + theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()  # Remove minor gridlines
+  ) + xlim(-7.5, 7.5) + ylim(-5,5)
+```
+This set of code can be used to save the figures as an EPS file. 
+
+```{r Saving the PCA Charts}
+# Saved the PCA charts above into a variable p1, to then export out using the code below:
+#cairo_ps(filename='pca_metabolite.eps')
+#p1
+#dev.off()
+```
+
+### 2.3. Box-Whisker Plots
+A box-and-whisker plots for each of the individual cytokines are generated here. 
+
+```{r Box-and-Whisker Plots for the Cytokines,fig.height=1.2, fig.width=1.8}
+# Remove the "Replicates" number and rename descriptions all into categories based on metabolite name
+OC_dat_avg[c(1:3),1] <- "Aminoadipic Acid"
+OC_dat_avg[c(4:6),1] <- "Arachidonic Acid"
+OC_dat_avg[c(7:9),1] <- "Asparagine"
+OC_dat_avg[c(10:12),1] <- "D-Sorbitol"
+OC_dat_avg[c(13:15),1] <- "Fructose"
+OC_dat_avg[c(16:18),1] <- "L-Tryptophan"
+OC_dat_avg[c(19:21),1] <- "Lauric Acid"
+OC_dat_avg[c(22:24),1] <- "Niacinamide"
+OC_dat_avg[c(25:27),1] <- "Retinol"
+
+# Reorder the groups of metabolites by respective associations with T2D and AD
+# AD protective: LT, N;    T2D: LA, Asp;    AD/T2D protective: R;     AD/T2D: AAA, AA, DS, F
+OC_boxwhisk_avg <- OC_dat_avg
+OC_boxwhisk_avg$Description <- factor(OC_boxwhisk_avg$Description,     # Reorder factor levels
+                         levels=c("L-Tryptophan", "Niacinamide", "Lauric Acid", "Asparagine", "Retinol", "Aminoadipic Acid", "Arachidonic Acid", "D-Sorbitol", "Fructose"))
+
+# Box and Whisker Plots - For IL9 color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL9 (33)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + ylim(-2,2.4) +
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL9/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For KC color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `KC (57)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(KC/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For MCP-1 color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `MCP-1 (51)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(MCP-1/Vehicle Ratio)") + ylim(-1.2, 2.0) +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For MIP-1alpha color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `MIP-1alpha (77)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(MIP-1"~alpha~"/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For RANTES color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `RANTES (55)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(RANTES/Vehicle Ratio)") + ylim(-1.5, 1.8) +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For Eotaxin color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `Eotaxin (74)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(Eotaxin/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IFN-gamma color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IFN-gamma (34)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IFN-gamma/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IL-1beta color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL-1Beta (19)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL-1Beta/Vehicle Ratio)") + ylim(-1.1, 3.5) +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IL-1alpha color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL-1alpha (53)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL-1alpha/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IL10 color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL10 (56)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL10/Vehicle Ratio)") + ylim(-1.4,2.3) +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IL12p40 color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL12p40 (76)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL12p40/Vehicle Ratio)") + ylim(-3.3, 2.7) +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IL12p70 color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL12p70 (78)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL12p70/Vehicle Ratio)") + ylim(-2.4, 1.8) + 
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IL13 color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL13 (37)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL13/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For IL6 color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `IL6 (38)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") + ylim(-5.5, 8.1) + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(IL6/Vehicle Ratio)") +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.7, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+
+# Box and Whisker Plots - For MIP-1Beta color coded in metabolites and vehicles
+ggplot(OC_boxwhisk_avg, aes(x = Description, y = `MIP-1Beta (75)`, fill=Description)) +
+    geom_boxplot() + theme_bw() + theme(panel.grid=element_blank(), axis.text.x = element_text(angle = 45, hjust = 1, ), legend.position = "none") + 
+    geom_jitter(shape=20, position=position_jitter(0), size=1.5) + xlab("") + ylab(~Log[2]~"(MIP-1Beta/Vehicle Ratio)") + ylim(-4.1, 2.1) +
+    scale_fill_manual(breaks = OC_dat$Description, values=c("orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "darkslategray3", "darkslategray3", "darkslategray3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "royalblue3", "royalblue3", "royalblue3", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink", "orange", "orange", "orange", "hot pink", "hot pink", "hot pink")) + geom_hline(yintercept = 0, size = 0.6, linetype="dotted") + geom_hline(yintercept = c(-1,1), size = 0.3, linetype="dashed") 
+```
+
+Each box-and-whisker plot can be saved as an EPS file using the code below.
+
+```{r Saving the Box-and-Whisker Plots}
+##Saved the charts above into a variable p1, to then export out, used for the box-whisker plots
+#cairo_ps(filename='IL-9.eps', width=2.5, height=3.2)
+#p1
+#dev.off()
+```
+
+A Mann-Whitney test is used to determine the p-values across different disease-associations. This is done for each measured cytokine group. The calculated p-values are combined into a single dataframe. 
+
+```{r Mann-Whitney Calculation for p-values}
+# Rename a new variable for the Mann-Whitney statistical analysis
+OC_MW_dat <- OC_condition_KW
+
+# Renaming the columns to remove the numbers
+colnames(OC_MW_dat)[2] <- "Eotaxin"
+colnames(OC_MW_dat)[3] <- "IFN-gamma"
+colnames(OC_MW_dat)[4] <- "IL-1beta"
+colnames(OC_MW_dat)[5] <- "IL-1alpha"
+colnames(OC_MW_dat)[6] <- "IL10"
+colnames(OC_MW_dat)[7] <- "IL12p40"
+colnames(OC_MW_dat)[8] <- "IL12p70"
+colnames(OC_MW_dat)[9] <- "IL13"
+colnames(OC_MW_dat)[10] <- "IL6"
+colnames(OC_MW_dat)[11] <- "IL9"
+colnames(OC_MW_dat)[12] <- "KC"
+colnames(OC_MW_dat)[13] <- "MCP-1"
+colnames(OC_MW_dat)[14] <- "MIP-1beta"
+colnames(OC_MW_dat)[15] <- "MIP-1alpha"
+colnames(OC_MW_dat)[16] <- "RANTES"
+
+# Establishing four different groups based on disease association for the Mann-Whitney tests
+# First establish a group with T2D-associated names only
+MW_dat_AD_T2D <- OC_MW_dat[grepl("T2D", OC_MW_dat$Condition),]
+# Remove the AD affiliated groups to get T2D-only group
+MW_dat_T2D <- MW_dat_AD_T2D[!grepl("AD", MW_dat_AD_T2D$Condition),]
+# Get the AD protective group by searching for AD protective
+MW_dat_ADprotect <- OC_MW_dat[grepl("AD Protective", OC_MW_dat$Condition),]
+# Get the AD-T2D protective by taking the the first group and taking protective
+MW_dat_AD_T2Dprotect <- MW_dat_AD_T2D[grepl("Protective", MW_dat_AD_T2D$Condition),]
+# Remove the protective association from the AD-T2D harmful group
+MW_dat_AD_T2D <- MW_dat_AD_T2D[!grepl("Protective", MW_dat_AD_T2D$Condition),]
+# Get the AD association to keep the AD-T2D harmful group
+MW_dat_AD_T2D <- MW_dat_AD_T2D[grepl("AD", MW_dat_AD_T2D$Condition),]
+
+# Calculate p-values for each separate cytokine 
+# A. Eotaxin Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$Eotaxin, MW_dat_T2D$Eotaxin, alternative = "two.sided")
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$Eotaxin, MW_dat_ADprotect$Eotaxin, alternative = "two.sided")
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$Eotaxin, MW_dat_AD_T2Dprotect$Eotaxin, alternative = "two.sided")
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$Eotaxin, MW_dat_ADprotect$Eotaxin, alternative = "two.sided")
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$Eotaxin, MW_dat_AD_T2Dprotect$Eotaxin, alternative = "two.sided")
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$Eotaxin, MW_dat_AD_T2Dprotect$Eotaxin,alternative = "two.sided")
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+Eotaxin <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for Eotaxin
+Eotaxin_MW <- data.frame(Pairwise, Eotaxin)
+
+# B. IFN-gamma Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$'IFN-gamma', MW_dat_T2D$'IFN-gamma', alternative = "two.sided")
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$'IFN-gamma', MW_dat_ADprotect$'IFN-gamma', alternative = "two.sided")
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$'IFN-gamma', MW_dat_AD_T2Dprotect$'IFN-gamma', alternative = "two.sided")
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$'IFN-gamma', MW_dat_ADprotect$'IFN-gamma', alternative = "two.sided")
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$'IFN-gamma', MW_dat_AD_T2Dprotect$'IFN-gamma', alternative = "two.sided")
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$'IFN-gamma', MW_dat_AD_T2Dprotect$'IFN-gamma', alternative = "two.sided")
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IFN_gamma <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for 'IFN-gamma'
+IFN_gamma_MW <- data.frame(Pairwise, IFN_gamma)
+
+# C. IL-1Beta Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$'IL-1beta', MW_dat_T2D$'IL-1beta')
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$'IL-1beta', MW_dat_ADprotect$'IL-1beta')
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$'IL-1beta', MW_dat_AD_T2Dprotect$'IL-1beta')
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$'IL-1beta', MW_dat_ADprotect$'IL-1beta')
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$'IL-1beta', MW_dat_AD_T2Dprotect$'IL-1beta')
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$'IL-1beta', MW_dat_AD_T2Dprotect$'IL-1beta')
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL1beta <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for 'IL-1beta'
+IL1beta_MW <- data.frame(Pairwise, IL1beta)
+
+# D. IL-1Alpha Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$'IL-1alpha', MW_dat_T2D$'IL-1alpha')
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$'IL-1alpha', MW_dat_ADprotect$'IL-1alpha')
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$'IL-1alpha', MW_dat_AD_T2Dprotect$'IL-1alpha')
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$'IL-1alpha', MW_dat_ADprotect$'IL-1alpha')
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$'IL-1alpha', MW_dat_AD_T2Dprotect$'IL-1alpha')
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$'IL-1alpha', MW_dat_AD_T2Dprotect$'IL-1alpha')
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL1alpha <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for 'IL-1alpha'
+IL1alpha_MW <- data.frame(Pairwise, IL1alpha)
+
+# E. IL-10 Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$IL10, MW_dat_T2D$IL10)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$IL10, MW_dat_ADprotect$IL10)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$IL10, MW_dat_AD_T2Dprotect$IL10)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$IL10, MW_dat_ADprotect$IL10)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$IL10, MW_dat_AD_T2Dprotect$IL10)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$IL10, MW_dat_AD_T2Dprotect$IL10)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL10 <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for IL10
+IL10_MW <- data.frame(Pairwise, IL10)
+
+# F. IL-12p40 Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$IL12p40, MW_dat_T2D$IL12p40)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$IL12p40, MW_dat_ADprotect$IL12p40)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$IL12p40, MW_dat_AD_T2Dprotect$IL12p40)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$IL12p40, MW_dat_ADprotect$IL12p40)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$IL12p40, MW_dat_AD_T2Dprotect$IL12p40)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$IL12p40, MW_dat_AD_T2Dprotect$IL12p40)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL12p40 <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for IL12p40
+IL12p40_MW <- data.frame(Pairwise, IL12p40)
+
+# G. IL-12p70 Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$IL12p70, MW_dat_T2D$IL12p70)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$IL12p70, MW_dat_ADprotect$IL12p70)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$IL12p70, MW_dat_AD_T2Dprotect$IL12p70)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$IL12p70, MW_dat_ADprotect$IL12p70)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$IL12p70, MW_dat_AD_T2Dprotect$IL12p70)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$IL12p70, MW_dat_AD_T2Dprotect$IL12p70)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL12p70 <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for IL12p70
+IL12p70_MW <- data.frame(Pairwise, IL12p70)
+
+# H. IL-13 Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$IL13, MW_dat_T2D$IL13)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$IL13, MW_dat_ADprotect$IL13)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$IL13, MW_dat_AD_T2Dprotect$IL13)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$IL13, MW_dat_ADprotect$IL13)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$IL13, MW_dat_AD_T2Dprotect$IL13)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$IL13, MW_dat_AD_T2Dprotect$IL13)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL13 <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for IL13
+IL13_MW <- data.frame(Pairwise, IL13)
+
+# I. IL-6 Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$IL6, MW_dat_T2D$IL6)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$IL6, MW_dat_ADprotect$IL6)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$IL6, MW_dat_AD_T2Dprotect$IL6)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$IL6, MW_dat_ADprotect$IL6)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$IL6, MW_dat_AD_T2Dprotect$IL6)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$IL6, MW_dat_AD_T2Dprotect$IL6)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL6 <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for IL6
+IL6_MW <- data.frame(Pairwise, IL6)
+
+# J. IL-9 Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$IL9, MW_dat_T2D$IL9)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$IL9, MW_dat_ADprotect$IL9)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$IL9, MW_dat_AD_T2Dprotect$IL9)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$IL9, MW_dat_ADprotect$IL9)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$IL9, MW_dat_AD_T2Dprotect$IL9)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$IL9, MW_dat_AD_T2Dprotect$IL9)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+IL9 <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for IL9
+IL9_MW <- data.frame(Pairwise, IL9)
+
+# K. KC Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$KC, MW_dat_T2D$KC)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$KC, MW_dat_ADprotect$KC)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$KC, MW_dat_AD_T2Dprotect$KC)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$KC, MW_dat_ADprotect$KC)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$KC, MW_dat_AD_T2Dprotect$KC)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$KC, MW_dat_AD_T2Dprotect$KC)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+KC <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for KC
+KC_MW <- data.frame(Pairwise, KC)
+
+# L. MCP-1 Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$'MCP-1', MW_dat_T2D$'MCP-1')
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$'MCP-1', MW_dat_ADprotect$'MCP-1')
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$'MCP-1', MW_dat_AD_T2Dprotect$'MCP-1')
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$'MCP-1', MW_dat_ADprotect$'MCP-1')
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$'MCP-1', MW_dat_AD_T2Dprotect$'MCP-1')
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$'MCP-1', MW_dat_AD_T2Dprotect$'MCP-1')
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+MCP1 <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for 'MCP-1'
+MCP1_MW <- data.frame(Pairwise, MCP1)
+
+# M. MIP-1beta Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$'MIP-1beta', MW_dat_T2D$'MIP-1beta')
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$'MIP-1beta', MW_dat_ADprotect$'MIP-1beta')
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$'MIP-1beta', MW_dat_AD_T2Dprotect$'MIP-1beta')
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$'MIP-1beta', MW_dat_ADprotect$'MIP-1beta')
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$'MIP-1beta', MW_dat_AD_T2Dprotect$'MIP-1beta')
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$'MIP-1beta', MW_dat_AD_T2Dprotect$'MIP-1beta')
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+MIP1beta <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for 'MIP-1beta'
+MIP1beta_MW <- data.frame(Pairwise, MIP1beta)
+
+# O. MIP-1alpha Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$'MIP-1alpha', MW_dat_T2D$'MIP-1alpha')
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$'MIP-1alpha', MW_dat_ADprotect$'MIP-1alpha')
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$'MIP-1alpha', MW_dat_AD_T2Dprotect$'MIP-1alpha')
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$'MIP-1alpha', MW_dat_ADprotect$'MIP-1alpha')
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$'MIP-1alpha', MW_dat_AD_T2Dprotect$'MIP-1alpha')
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$'MIP-1alpha', MW_dat_AD_T2Dprotect$'MIP-1alpha')
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+MIP1alpha <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for 'MIP-1alpha'
+MIP1alpha_MW <- data.frame(Pairwise, MIP1alpha)
+
+# P. RANTES Cytokine Mann Whitney Comparison
+# AD-T2D harmful vs T2D harmful
+AD_T2DvsT2D <- wilcox.test(MW_dat_AD_T2D$RANTES, MW_dat_T2D$RANTES)
+# AD-T2D harmful vs AD protective
+AD_T2DvsADprotect <- wilcox.test(MW_dat_AD_T2D$RANTES, MW_dat_ADprotect$RANTES)
+# AD-T2D harmful vs AD-T2D protective
+AD_T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_AD_T2D$RANTES, MW_dat_AD_T2Dprotect$RANTES)
+# T2D harmful vs AD protective
+T2DvsADprotect <- wilcox.test(MW_dat_T2D$RANTES, MW_dat_ADprotect$RANTES)
+# T2D harmful vs AD-T2D protective
+T2DvsAD_T2Dprotect <- wilcox.test(MW_dat_T2D$RANTES, MW_dat_AD_T2Dprotect$RANTES)
+# AD Protective vs AD-T2D protective
+ADprotectvsAD_T2Dprotect <- wilcox.test(MW_dat_ADprotect$RANTES, MW_dat_AD_T2Dprotect$RANTES)
+# Create a list for the disease-associated pair relationships 
+Pairwise <- c("AD-T2D vs T2D", "AD-T2D vs AD protective", "AD-T2D vs AD-T2D protective", "T2D vs AD protective", "T2D vs AD-T2D protective", "AD protective vs AD-T2D protective")
+# Prepare the pvalues in a list
+RANTES <- c(AD_T2DvsT2D$p.value, AD_T2DvsADprotect$p.value, AD_T2DvsAD_T2Dprotect$p.value, T2DvsADprotect$p.value, T2DvsAD_T2Dprotect$p.value, ADprotectvsAD_T2Dprotect$p.value)
+# Generate Data frame for the MW test for RANTES
+RANTES_MW <- data.frame(Pairwise, RANTES)
+
+# Combine the p-values from Mann-Whitney into one data frame
+Cytokines_MW <- data.frame(Pairwise, Eotaxin_MW$Eotaxin, IFN_gamma_MW$IFN_gamma, IL1beta_MW$IL1beta, IL1alpha_MW$IL1alpha, IL10_MW$IL10, IL12p40_MW$IL12p40, IL12p70_MW$IL12p70, IL13_MW$IL13, IL6_MW$IL6, IL9_MW$IL9, KC_MW$KC, MCP1_MW$MCP1, MIP1beta_MW$MIP1beta, MIP1alpha_MW$MIP1alpha, RANTES_MW$RANTES)
+```
+
+### 2.4. Partial Least Squares Discriminant Analysis (PLS-DA)
+PLS-DA model using a four-way analysis among the different disease-associated metabolites.
+
+#### 2.4.1. PLS-DA for 4-Way Comparison Based on Disease-Association
+```{r Prepare the Data for a 4-Way PLS-DA Comparison, fig.height=4.2, fig.width=5}
+# Rename a new variable for the plsda data set
+OC_plsda_dat <- OC_condition_KW
+
+# Renaming the columns to remove the numbers
+colnames(OC_plsda_dat)[2] <- "Eotaxin"
+colnames(OC_plsda_dat)[3] <- "IFN-gamma"
+colnames(OC_plsda_dat)[4] <- "IL-1beta"
+colnames(OC_plsda_dat)[5] <- "IL-1alpha"
+colnames(OC_plsda_dat)[6] <- "IL10"
+colnames(OC_plsda_dat)[7] <- "IL12p40"
+colnames(OC_plsda_dat)[8] <- "IL12p70"
+colnames(OC_plsda_dat)[9] <- "IL13"
+colnames(OC_plsda_dat)[10] <- "IL6"
+colnames(OC_plsda_dat)[11] <- "IL9"
+colnames(OC_plsda_dat)[12] <- "KC"
+colnames(OC_plsda_dat)[13] <- "MCP-1"
+colnames(OC_plsda_dat)[14] <- "MIP-1beta"
+colnames(OC_plsda_dat)[15] <- "MIP-1alpha"
+colnames(OC_plsda_dat)[16] <- "RANTES"
+
+# Factorize the conditions based on the four different disease-association groups
+OC_plsda_dat$Condition <- factor(OC_plsda_dat$Condition)
+
+## Cross Validation to Determine the Number of Components
+# Separate data into the specific categories (Y, disease association) and (X, dataset from cytokines)
+Y <- as.character(OC_plsda_dat$Condition)
+X <- OC_plsda_dat[2:16]
+
+# Compute PLSDA for 10 components (noted as plsda_draft for multiple components)
+plsda_draft <- plsda(X, Y, ncomp = 10)
+
+# Perform a 3-fold cross-validation repeated 10 times to evaluate classification performance
+# Noted as plsda_cv for the cross-validation analysis
+plsda_cv <- perf(plsda_draft, validation = 'Mfold', folds = 3, 
+                  progressBar = FALSE,  # Set to TRUE to track progress
+                  nrepeat = 100)
+# Plot the balanced error rate (BER) and the overall error
+plot(plsda_cv, sd = TRUE, legend.position = 'horizontal')
+
+## Plotting the PLS-DA Graph
+# Code below is used to save the PLS-DA file
+#cairo_ps(filename='plsda_4way.eps', height = 8.2, width = 10)
+
+# A four-way PLS-DA was performed with 3 components
+plsda_4way <- plsda(X, Y, ncomp = 3)
+
+# PLS-DA with LV1 and LV2
+plotIndiv(plsda_4way, ind.names = FALSE, legend=TRUE,
+          comp=c(1,2), ellipse = FALSE, pch=16,
+          title = "",
+          star = TRUE, 
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 3.5,
+          point.lwd = 4.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("hot pink", "darkslategray3", "royalblue3", "orange"))
+
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+
+#dev.off()
+
+# Code is used to identify which metabolite is contributing the the data point in the PLS-DA Model
+# Identify position in the row to identify metabolite association
+plotIndiv(plsda_4way, ind.names = TRUE, legend=TRUE,
+          comp=c(1,2), ellipse = FALSE,
+          title = "",
+          star = TRUE, 
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 3.5,
+          point.lwd = 4.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("hot pink", "darkslategray3", "royalblue3", "orange"))
+
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+```
+
+Identify the loadings for latent variable 1 and 2. Determine the variable importance in projection for the latent variables 1 and 2.
+
+```{r Loading Variables and VIP Determination,  fig.height=5.2, fig.width=10}
+## Determine the Variable Importance in Projections for the Loadings
+# Determine the VIP values for PLSDA-4way
+plsda_4way.vip <- vip(plsda_4way)
+
+barplot(plsda_4way.vip,
+        beside = TRUE, col = c("red", "orange", "yellow", "dark green", "light blue", "purple", "violet", "brown", "pink", "black", "white", "gray", "blue", "light green", "lightcyan"),
+        ylim = c(0, 2.0), legend = rownames(plsda_4way.vip),
+        main = "Variable Importance in the Projection", font.main = 4)
+
+abline(h=1, lty="dotted", col="black", lwd=5)
+
+## Latent Variable 1 Loadings
+# Pull the loadings information
+loadings4way <- as.data.frame(plsda_4way[["loadings"]][["X"]])
+# Capture the rowname list
+rowname4way <- rownames(loadings4way)
+# Remove the old dataframe's row name
+rownames(loadings4way) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadings4way <- cbind(rowname4way, loadings4way)
+# Rename the first column to Cytokine
+colnames(loadings4way)[1] <- "Cytokine"
+
+# Specify the desired words in the desired order
+selected_words <- c("IL-1alpha", "MIP-1alpha","IL12p70", "IL6", "IL13", "IL-1beta", "KC", "Eotaxin",  "IL10", "MCP-1", "IFN-gamma", "IL12p40", "RANTES", "MIP-1beta", "IL9")
+
+# Rearrange the rows based on selected words
+loadings4way <- loadings4way[match(selected_words, loadings4way$Cytokine, nomatch = 0), ]
+rownames(loadings4way) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadings4way$Cytokine <- factor(loadings4way$Cytokine,
+                  levels = c("IL9", "MIP-1beta", "RANTES", "IL12p40", "IFN-gamma", "MCP-1", "IL10", "Eotaxin", "KC", "IL-1beta", "IL13", "IL6", "IL12p70", "MIP-1alpha", "IL-1alpha"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_4way, comp = 1, method = 'mean', contrib = 'max', border = "black", xlim = c(-0.3,0.55))
+# Plot of loadings color adjusted with fixed cytokine list
+loadings4way %>%
+        ggplot(aes(x = Cytokine, y = comp1, fill = Cytokine)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("orange", "royalblue3", "royalblue3", "orange", "orange", "darkslategray3", "orange", "orange", "darkslategray3", "orange", "orange", "darkslategray3", "royalblue3", "royalblue3", "hot pink")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV1") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+
+## Latent Variable 2 Loadings
+# Pull the loadings information
+loadings4way <- as.data.frame(plsda_4way[["loadings"]][["X"]])
+# Capture the rowname list
+rowname4way <- rownames(loadings4way)
+# Remove the old dataframe's row name
+rownames(loadings4way) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadings4way <- cbind(rowname4way, loadings4way)
+# Rename the first column to Cytokine
+colnames(loadings4way)[1] <- "Cytokine"
+
+# Specify the desired words in the desired order
+selected_words <- c("RANTES", "IFN-gamma","MIP-1alpha", "KC", "IL9", "IL13", "Eotaxin", "MIP-1beta",  "IL-1alpha", "IL6", "IL-1beta", "IL10", "IL12p40", "IL12p70", "MCP-1")
+
+# Rearrange the rows based on selected words
+loadings4way <- loadings4way[match(selected_words, loadings4way$Cytokine, nomatch = 0), ]
+rownames(loadings4way) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadings4way$Cytokine <- factor(loadings4way$Cytokine,
+                  levels = c("MCP-1", "IL12p70", "IL12p40", "IL10", "IL-1beta", "IL6", "IL-1alpha", "MIP-1beta", "Eotaxin", "IL13", "IL9", "KC", "MIP-1alpha", "IFN-gamma", "RANTES"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_4way, comp = 2, method = 'mean', contrib = 'max')
+# Plot of loadings color adjusted with fixed cytokine list
+loadings4way %>%
+        ggplot(aes(x = Cytokine, y = comp2, fill = Cytokine)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("darkslategray3", "royalblue3", "orange", "orange", "orange", "darkslategray3", "hot pink", "royalblue3", "orange", "orange", "orange", "darkslategray3", "royalblue3", "orange", "royalblue3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV2") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()  ,# Remove minor gridlines
+  )
+```
+
+#### 2.4.2. PLS-DA for 2-Way Comparison Based on AD Harmful vs. AD Protective
+Prepare a similar PLS-DA model, including only the metabolites and data associated with AD.
+
+```{r Prepare the Data for a 2-Way AD PLS-DA Comparison, fig.height=4.2, fig.width=5}
+# Rename a new variable for the plsda data set
+OC_plsda_dat_AD <- OC_condition_KW
+
+# Renaming the columns to remove the numbers
+colnames(OC_plsda_dat_AD)[2] <- "Eotaxin"
+colnames(OC_plsda_dat_AD)[3] <- "IFN-gamma"
+colnames(OC_plsda_dat_AD)[4] <- "IL-1beta"
+colnames(OC_plsda_dat_AD)[5] <- "IL-1alpha"
+colnames(OC_plsda_dat_AD)[6] <- "IL10"
+colnames(OC_plsda_dat_AD)[7] <- "IL12p40"
+colnames(OC_plsda_dat_AD)[8] <- "IL12p70"
+colnames(OC_plsda_dat_AD)[9] <- "IL13"
+colnames(OC_plsda_dat_AD)[10] <- "IL6"
+colnames(OC_plsda_dat_AD)[11] <- "IL9"
+colnames(OC_plsda_dat_AD)[12] <- "KC"
+colnames(OC_plsda_dat_AD)[13] <- "MCP-1"
+colnames(OC_plsda_dat_AD)[14] <- "MIP-1beta"
+colnames(OC_plsda_dat_AD)[15] <- "MIP-1alpha"
+colnames(OC_plsda_dat_AD)[16] <- "RANTES"
+
+# Adjust disease-association on AD protective or harmful, regardless of T2D status
+OC_plsda_dat_AD[c(1:3),1] <- "AD"
+OC_plsda_dat_AD[c(4:6),1] <- "AD"
+OC_plsda_dat_AD[c(7:9),1] <- "T2D"
+OC_plsda_dat_AD[c(10:12),1] <- "AD"
+OC_plsda_dat_AD[c(13:15),1] <- "AD"
+OC_plsda_dat_AD[c(16:18),1] <- "AD Protective"
+OC_plsda_dat_AD[c(19:21),1] <- "T2D"
+OC_plsda_dat_AD[c(22:24),1] <- "AD Protective"
+OC_plsda_dat_AD[c(25:27),1] <- "AD Protective"
+
+# Select only the categories associated with AD, and NOT T2D
+OC_plsda_dat_AD <- OC_plsda_dat_AD[grepl("AD", OC_plsda_dat_AD$Condition),]
+
+# Factorize the conditions based on association to AD protective or harmful, regardless of T2D affiliation
+OC_plsda_dat$Condition <- factor(OC_plsda_dat$Condition)
+
+## Cross Validation to determine the number of components for the model
+# Separate data into the specific categories (Y, disease association) and (X, dataset from cytokines)
+Y_AD <- as.character(OC_plsda_dat_AD$Condition)
+X_AD <- OC_plsda_dat_AD[2:16]
+
+# Compute PLSDA for 10 components (noted as plsda_draft for multiple components)
+plsda_draft_AD <- plsda(X_AD, Y_AD, ncomp = 10)
+
+# Perform a 3-fold cross-validation repeated 10 times to evaluate classification performance
+# Noted as plsda_cv for the cross-validation analysis
+plsda_cv_AD <- perf(plsda_draft_AD, validation = 'Mfold', folds = 3, 
+                  progressBar = FALSE,  # Set to TRUE to track progress
+                  nrepeat = 100)
+# Plot the balanced error rate (BER) and the overall error
+plot(plsda_cv_AD, sd = TRUE, legend.position = 'horizontal')
+
+## Plot the PLS-DA Model
+# Code below is to save the figure as an EPS file
+#cairo_ps(filename='plsda_AD_2way.eps', height = 8.2, width = 10)
+
+# A two-way PLS-DA was performed with 2 components
+plsda_AD <- plsda(X_AD, Y_AD, ncomp = 2)
+
+# PLS-DA with LV1 and LV2
+plotIndiv(plsda_AD, ind.names = FALSE, legend=TRUE,
+          comp=c(1,2), ellipse = FALSE, pch=16,
+          title = "",
+          star = TRUE, 
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 3.5,
+          point.lwd = 4.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("red3", "royalblue3"))
+          
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+          
+#dev.off()
+
+## PLS-DA Model with the associated number to identify the metabolite on the figure
+# Identify position in the row to identify metabolite association
+plotIndiv(plsda_AD, ind.names = TRUE, legend=TRUE,
+          comp=c(1,2), ellipse = FALSE,
+          title = "",
+          star = TRUE, 
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 3.5,
+          point.lwd = 4.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("red3", "royalblue3"))
+
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+```
+
+Identify the loadings for latent variable 1 and 2. Determine the variable importance in projection for the latent variables 1 and 2.
+
+```{r Loading Variables and VIP Determination for AD,  fig.height=5.2, fig.width=10}
+# Determine the VIP values for AD-2way 
+plsda_AD.vip <- vip(plsda_AD)
+
+# Plot the graph for the VIP>1
+barplot(plsda_AD.vip,
+        beside = TRUE, col = c("red", "orange", "yellow", "dark green", "light blue", "purple", "violet", "brown", "pink", "black", "white", "gray", "blue", "light green", "lightcyan"),
+        ylim = c(0, 2.0), legend = rownames(plsda_AD.vip),
+        main = "Variable Importance in the Projection", font.main = 4)
+
+abline(h=1, lty="dotted", col="black", lwd=5)
+
+## Loadings for Latent Variable 1
+# Pull the loadings information
+loadingsAD <- as.data.frame(plsda_AD[["loadings"]][["X"]])
+# Capture the rowname list
+rownameAD <- rownames(loadingsAD)
+# Remove the old dataframe's row name
+rownames(loadingsAD) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsAD <- cbind(rownameAD, loadingsAD)
+# Rename the first column to Cytokine
+colnames(loadingsAD)[1] <- "Cytokine"
+
+# Specify the desired words in the desired order
+selected_words <- c("IFN-gamma", "Eotaxin","MIP-1alpha", "MIP-1beta", "RANTES", "IL13", "IL9", "IL6", "IL12p70", "KC", "IL-1beta", "IL-1alpha", "IL12p40", "IL10", "MCP-1")
+
+# Rearrange the rows based on selected words
+loadingsAD <- loadingsAD[match(selected_words, loadingsAD$Cytokine, nomatch = 0), ]
+rownames(loadingsAD) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsAD$Cytokine <- factor(loadingsAD$Cytokine,
+                  levels = c("MCP-1", "IL10", "IL12p40", "IL-1alpha", "IL-1beta", "KC", "IL12p70", "IL6", "IL9", "IL13", "RANTES", "MIP-1beta", "MIP-1alpha", "Eotaxin", "IFN-gamma"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_AD, comp = 1, method = 'mean', contrib = 'max')
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsAD %>%
+        ggplot(aes(x = Cytokine, y = comp1, fill = Cytokine)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("royalblue3", "royalblue3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV1") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+
+## Loadings for Latent Variable 2
+# Pull the loadings information
+loadingsAD <- as.data.frame(plsda_AD[["loadings"]][["X"]])
+# Capture the rowname list
+rownameAD <- rownames(loadingsAD)
+# Remove the old dataframe's row name
+rownames(loadingsAD) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsAD <- cbind(rownameAD, loadingsAD)
+# Rename the first column to Cytokine
+colnames(loadingsAD)[1] <- "Cytokine"
+
+# Specify the desired words in the desired order
+selected_words <- c("IL9", "IL13", "IL-1beta", "MIP-1beta", "IL12p40", "RANTES", "MCP-1", "IL10", "IFN-gamma", "KC", "IL6", "Eotaxin", "IL12p70", "IL-1alpha", "MIP-1alpha")
+
+# Rearrange the rows based on selected words
+loadingsAD <- loadingsAD[match(selected_words, loadingsAD$Cytokine, nomatch = 0), ]
+rownames(loadingsAD) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsAD$Cytokine <- factor(loadingsAD$Cytokine,
+                  levels = c("MIP-1alpha", "IL-1alpha", "IL12p70", "Eotaxin", "IL6", "KC", "IFN-gamma", "IL10", "MCP-1", "RANTES", "IL12p40", "MIP-1beta", "IL-1beta", "IL13", "IL9"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_AD, comp = 2, method = 'mean', contrib = 'max')
+
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsAD %>%
+        ggplot(aes(x = Cytokine, y = comp2, fill = Cytokine)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("royalblue3", "red3", "red3", "royalblue3", "royalblue3", "royalblue3", "red3", "royalblue3", "royalblue3", "royalblue3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV2") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+```
+
+#### 2.4.3. PLS-DA for 2-Way Comparison Based on T2D Harmful vs. T2D Protective
+Prepare a similar PLS-DA model, including only the metabolites and data associated with T2D.
+
+```{r Prepare the Data for a 2-Way T2D PLS-DA Comparison, fig.height=4.2, fig.width=5}
+# Rename a new variable for the plsda data set
+OC_plsda_dat_T2D <- OC_condition_KW
+
+# Renaming the columns to remove the numbers
+colnames(OC_plsda_dat_T2D)[2] <- "Eotaxin"
+colnames(OC_plsda_dat_T2D)[3] <- "IFN-gamma"
+colnames(OC_plsda_dat_T2D)[4] <- "IL-1beta"
+colnames(OC_plsda_dat_T2D)[5] <- "IL-1alpha"
+colnames(OC_plsda_dat_T2D)[6] <- "IL10"
+colnames(OC_plsda_dat_T2D)[7] <- "IL12p40"
+colnames(OC_plsda_dat_T2D)[8] <- "IL12p70"
+colnames(OC_plsda_dat_T2D)[9] <- "IL13"
+colnames(OC_plsda_dat_T2D)[10] <- "IL6"
+colnames(OC_plsda_dat_T2D)[11] <- "IL9"
+colnames(OC_plsda_dat_T2D)[12] <- "KC"
+colnames(OC_plsda_dat_T2D)[13] <- "MCP-1"
+colnames(OC_plsda_dat_T2D)[14] <- "MIP-1beta"
+colnames(OC_plsda_dat_T2D)[15] <- "MIP-1alpha"
+colnames(OC_plsda_dat_T2D)[16] <- "RANTES"
+
+# Adjust disease-association on T2D protective or harmful, regardless of T2D status
+OC_plsda_dat_T2D[c(1:3),1] <- "T2D"
+OC_plsda_dat_T2D[c(4:6),1] <- "T2D"
+OC_plsda_dat_T2D[c(7:9),1] <- "T2D"
+OC_plsda_dat_T2D[c(10:12),1] <- "T2D"
+OC_plsda_dat_T2D[c(13:15),1] <- "T2D"
+OC_plsda_dat_T2D[c(16:18),1] <- "AD Protective"
+OC_plsda_dat_T2D[c(19:21),1] <- "T2D"
+OC_plsda_dat_T2D[c(22:24),1] <- "AD Protective"
+OC_plsda_dat_T2D[c(25:27),1] <- "T2D Protective"
+
+# Select only the categories associated with T2D, and NOT T2D
+OC_plsda_dat_T2D <- OC_plsda_dat_T2D[grepl("T2D", OC_plsda_dat_T2D$Condition),]
+
+# Factorize the conditions based on association to T2D protective or harmful, regardless of T2D affiliation
+OC_plsda_dat$Condition <- factor(OC_plsda_dat$Condition)
+
+## Cross Validation to determine the number of components for the model
+# Separate data into the specific categories (Y, disease association) and (X, dataset from cytokines)
+Y_T2D <- as.character(OC_plsda_dat_T2D$Condition)
+X_T2D <- OC_plsda_dat_T2D[2:16]
+
+# Compute PLSDA for 10 components (noted as plsda_draft for multiple components)
+plsda_draft_T2D <- plsda(X_T2D, Y_T2D, ncomp = 10)
+
+# Perform a 3-fold cross-validation repeated 10 times to evaluate classification performance
+# Noted as plsda_cv for the cross-validation analysis
+plsda_cv_T2D <- perf(plsda_draft_T2D, validation = 'Mfold', folds = 3, 
+                  progressBar = FALSE,  # Set to TRUE to track progress
+                  nrepeat = 100)
+# Plot the balanced error rate (BER) and the overall error
+plot(plsda_cv_T2D, sd = TRUE, legend.position = 'horizontal')
+
+## PLS-DA Model Being Plotted
+# Code below to save the Figure as an EPS
+#cairo_ps(filename='plsda_T2D_2way.eps', height = 8.2, width = 10)
+
+# A two-way T2D PLS-DA was performed with 3 components
+plsda_T2D <- plsda(X_T2D, Y_T2D, ncomp = 3)
+
+# PLS-DA with LV1 and LV2
+plotIndiv(plsda_T2D, ind.names = FALSE, legend=TRUE,
+          comp=c(1,2), ellipse = FALSE, pch=16,
+          title = "",
+          star = TRUE, 
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 3.5,
+          point.lwd = 4.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("plum", "gray60"))
+
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+          
+#dev.off()
+
+## PLS-DA Model to identify the individual metabolites on the figure
+# Identify position in the row to identify metabolite association
+plotIndiv(plsda_T2D, ind.names = TRUE, legend=TRUE,
+          comp=c(1,2), ellipse = FALSE,
+          title = "",
+          star = TRUE, 
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 3.5,
+          point.lwd = 4.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("plum", "gray60"))
+
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+```
+
+Identify the loadings for latent variable 1 and 2. Determine the variable importance in projection for the latent variables 1 and 2.
+
+```{r Loading Variables and VIP Determination for T2D,  fig.height=5.2, fig.width=10}
+# Determine the VIP values for PLSDA-4way
+plsda_T2D.vip <- vip(plsda_T2D)
+
+barplot(plsda_T2D.vip,
+        beside = TRUE, col = c("red", "orange", "yellow", "dark green", "light blue", "purple", "violet", "brown", "pink", "black", "white", "gray", "blue", "light green", "lightcyan"),
+        ylim = c(0, 2.0), legend = rownames(plsda_T2D.vip),
+        main = "Variable Importance in the Projection", font.main = 4)
+
+abline(h=1, lty="dotted", col="black", lwd=5)
+
+## Loadings for Latent Variable 1
+# Pull the loadings information
+loadingsT2D <- as.data.frame(plsda_T2D[["loadings"]][["X"]])
+# Capture the rowname list
+rownameT2D <- rownames(loadingsT2D)
+# Remove the old dataframe's row name
+rownames(loadingsT2D) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsT2D <- cbind(rownameT2D, loadingsT2D)
+# Rename the first column to Cytokine
+colnames(loadingsT2D)[1] <- "Cytokine"
+
+# Specify the desired words in the desired order
+selected_words <- c("IL13", "IL-1beta", "IL12p70", "RANTES", "Eotaxin", "MIP-1alpha", "IL6", "IFN-gamma", "IL10", "IL12p40", "MIP-1beta", "IL9", "IL-1alpha", "KC", "MCP-1")
+
+# Rearrange the rows based on selected words
+loadingsT2D <- loadingsT2D[match(selected_words, loadingsT2D$Cytokine, nomatch = 0), ]
+rownames(loadingsT2D) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsT2D$Cytokine <- factor(loadingsT2D$Cytokine,
+                  levels = c("MCP-1", "MIP-1beta", "IL9", "RANTES", "IL6", "IL12p70", "KC", "IFN-gamma", "IL-1alpha", "Eotaxin", "IL13", "IL12p40", "MIP-1alpha", "IL-1beta", "IL10"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_T2D, comp = 1, method = 'mean', contrib = 'max')
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsT2D %>%
+        ggplot(aes(x = Cytokine, y = comp1, fill = Cytokine)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("gray60", "plum", "plum", "plum", "gray60", "plum", "gray60", "plum", "plum", "plum", "plum", "plum", "plum", "gray60", "gray60")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV1") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+
+## Loadings for Latent Variable 2
+# Pull the loadings information
+loadingsT2D <- as.data.frame(plsda_T2D[["loadings"]][["X"]])
+# Capture the rowname list
+rownameT2D <- rownames(loadingsT2D)
+# Remove the old dataframe's row name
+rownames(loadingsT2D) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsT2D <- cbind(rownameT2D, loadingsT2D)
+# Rename the first column to Cytokine
+colnames(loadingsT2D)[1] <- "Cytokine"
+
+# Specify the desired words in the desired order
+selected_words <- c("IL10", "IL-1beta", "IL12p40", "Eotaxin", "IL13", "IL9", "IFN-gamma", "MCP-1", "IL6", "MIP-1alpha", "KC", "IL-1alpha", "MIP-1beta", "IL12p70", "RANTES")
+
+# Rearrange the rows based on selected words
+loadingsT2D <- loadingsT2D[match(selected_words, loadingsT2D$Cytokine, nomatch = 0), ]
+rownames(loadingsT2D) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsT2D$Cytokine <- factor(loadingsT2D$Cytokine,
+                  levels = c("MIP-1alpha", "MCP-1", "IL10", "RANTES", "IFN-gamma", "KC", "IL12p70", "IL-1beta", "IL-1alpha", "IL12p40", "IL13", "Eotaxin", "IL9", "MIP-1beta", "IL6"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_T2D, comp = 2, method = 'mean', contrib = 'max')
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsT2D %>%
+        ggplot(aes(x = Cytokine, y = comp2, fill = Cytokine)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("plum","gray60", "gray60", "plum", "plum", "gray60", "plum", "gray60", "plum", "plum", "plum", "plum", "plum", "plum", "gray60")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV2") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+```
+
+Saving the PLS-DA Model and Figures as an EPS file
+
+```{r Saving the PLS-DA Figures}
+#Saved the charts above into a variable p1, to then export out
+#cairo_ps(filename='PLSDA-T2D-LV1.eps')
+#p1
+#dev.off()
+```
+
+
+*** END OF SCRIPT ***
