@@ -35,6 +35,7 @@ if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 BiocManager::install("mixOmics")
+library("mixOmics")
 ```
 
 ## 1. Data Preparation for Analysis
